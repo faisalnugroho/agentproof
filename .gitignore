@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# deployer secrets
+scripts/smoke_deployer.json
+
+# local-only contract override (untracked address for dev)
+frontend/contract-address.js
+
+# logs / runtime
+docs/smoke_run.log
+*.log
