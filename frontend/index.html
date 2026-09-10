@@ -814,7 +814,11 @@ function showPage(name){
   window.scrollTo({ top: 0 });
 }
 document.querySelectorAll('#navtabs a, .brand').forEach(el => {
-  el.onclick = e => { e.preventDefault(); showPage(el.dataset.nav); };
+  el.onclick = e => {
+    e.preventDefault();
+    showPage(el.dataset.nav);
+    if (el.dataset.nav === 'explore') loadExplore();
+  };
 });
 $('hero-verify').onclick = () => { showPage('verify'); $('verify-anchor').scrollIntoView({ behavior:'smooth', block:'start' }); };
 $('hero-explore').onclick = () => { showPage('explore'); loadExplore(); };
