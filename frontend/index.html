@@ -683,6 +683,32 @@ function receiptExecutionError(receipt, label){
   return null;
 }
 
+/* Extract the EXACT return value of a write tx (e.g. the verification_id
+   returned by request_verification) from the finalized receipt.
+   On Studionet the leader receipt carries result.payload.readable —
+   the decoded calldata return value. This is what makes request
+   correlation safe under concurrency: we never read the mutable global
+   verification count. */
+function txReturnValue(receipt){
+  try {
+    const lead = Array.isArray(receipt?.consensus_data?.leader_receipt)
+      ? receipt.consensus_data.leader_receipt[0]
+      : receipt?.consensus_data?.leader_receipt;
+    const payload = lead?.result?.payload;
+    if (payload && typeof payload.readable === 'string'){
+      const n = Number(payload.readable);
+      if (Number.isFinite(n) && payload.readable.trim() !== '') return n;
+      return payload.readable;
+    }
+    const raw = lead?.result?.raw;
+    if (typeof raw === 'string' && raw.length > 1){
+      const n = Number(raw.slice(1).trim());
+      if (Number.isFinite(n)) return n;
+    }
+  } catch {}
+  return null;
+}
+
 async function sendWrite(fn, args, label){
   const w = activeWallet();
   if (!w) throw new Error('No wallet connected — create or import a signer first');
@@ -924,34 +950,40 @@ $('btn-verify').onclick = async () => {
   busy = true;
   $('btn-verify').disabled = true;
   try {
-    /* step 1 — request */
+    /* step 1 — request. The contract returns the EXACT verification_id
+       for THIS request; we extract it from the finalized tx receipt —
+       never from the mutable global verification count. */
     setStep(1, false);
     setStatus('busy', 'Submitting the verification request — storing agent + declared capabilities on-chain…');
-    const { txHash } = await sendWrite('request_verification',
+    const { txHash, receipt } = await sendWrite('request_verification',
       [name, agentUrl, docsUrl, declared, desc], 'request verification');
-    const cnt = parseJsonSafe(await readContract('get_verification_count', []));
-    const vid = Number(cnt);
-    currentVid = vid;
+    const vid = txReturnValue(receipt);
+    if (vid === null || vid === undefined || !Number.isFinite(Number(vid))){
+      throw new Error('could not read the exact verification id from the transaction receipt — ' +
+        'check tx <a href="' + EXPLORER_TX + txHash + '">' + txHash.slice(0, 18) + '…</a> on the explorer');
+    }
+    currentVid = Number(vid);
+    persistActiveVerification(currentVid, activeWallet());
     setStep(1, true);
-    toast('Verification #' + vid + ' created — running consensus');
+    toast('Verification #' + currentVid + ' created — running consensus');
 
     /* step 2–5 — verify under consensus */
     setStep(2, false);
     setStatus('busy', 'Consensus run in progress — leader fetching <b>' + esc(agentUrl) + '</b> and evaluating capabilities, validators re-checking independently…');
     setStep(3, false);
     setStep(4, false);
-    const { txHash: vHash } = await sendWrite('verify_agent', [vid], 'verify agent');
+    const { txHash: vHash } = await sendWrite('verify_agent', [currentVid], 'verify agent');
 
-    /* step 6 — read the sealed passport and require proof of mutation */
+    /* step 6 — read the sealed passport BY EXACT ID and require proof of mutation */
     setStatus('busy', 'Finalized — reading the sealed passport…');
     let rec = null;
     for (let i = 0; i < 6; i++){
-      const raw = await withRetry(() => readContract('get_verification', [vid]), 4, 'read passport');
+      const raw = await withRetry(() => readContract('get_verification', [currentVid]), 4, 'read passport');
       rec = parseJsonSafe(raw);
-      if (rec && rec.state === 'SEALED') break;
+      if (rec && rec.verification_id === String(currentVid) && rec.state === 'SEALED') break;
       await new Promise(r => setTimeout(r, 4000));
     }
-    if (!rec || rec.state !== 'SEALED'){
+    if (!rec || rec.state !== 'SEALED' || rec.verification_id !== String(currentVid)){
       throw new Error('Passport not sealed after consensus — check tx ' +
         '<a href="' + EXPLORER_TX + vHash + '">' + vHash.slice(0, 18) + '…</a> on the explorer');
     }
@@ -959,7 +991,7 @@ $('btn-verify').onclick = async () => {
     renderPassport(rec, vHash);
     setStatus('ok', 'Passport sealed: <b>' + rec.status + '</b> · score <b>' + rec.score + '/100</b> · ' +
       '<a href="' + EXPLORER_TX + vHash + '" target="_blank" rel="noopener">view consensus tx ↗</a>');
-    toast('Passport #' + vid + ': ' + rec.status + ' (' + rec.score + '/100)');
+    toast('Passport #' + currentVid + ': ' + rec.status + ' (' + rec.score + '/100)');
   } catch (e){
     const msg = String(e.message || e);
     setStatus('err', 'Verification failed: ' + esc(msg));
@@ -970,6 +1002,39 @@ $('btn-verify').onclick = async () => {
   }
 };
 
+/* ============================== active verification recovery ============================== */
+/* The EXACT verification id is persisted with the wallet address that
+   created it. On refresh we recover it and re-read it via
+   get_my_verification (user-scoped): if the record belongs to the
+   active wallet, resume the workflow; otherwise it stays untouched.
+   Recovery NEVER uses get_verification_count / latest / count-1. */
+const VIDKEY = 'agentproof_active_vid';
+function persistActiveVerification(vid, wallet){
+  try {
+    if (wallet && vid != null){
+      localStorage.setItem(VIDKEY, JSON.stringify({
+        vid: String(vid), wallet: wallet.address, ts: Date.now(),
+      }));
+    }
+  } catch {}
+}
+function clearActiveVerification(){
+  try { localStorage.removeItem(VIDKEY); } catch {}
+}
+async function recoverActiveVerification(){
+  try {
+    const saved = JSON.parse(localStorage.getItem(VIDKEY) || 'null');
+    if (!saved || !saved.vid) return null;
+    const w = activeWallet();
+    if (!w || !saved.wallet || saved.wallet !== w.address) return null;
+    const raw = await readContract('get_my_verification', [Number(saved.vid)]);
+    const rec = parseJsonSafe(raw);
+    if (rec && !rec.error && rec.owner === w.address){
+      return rec;   // still this wallet's record — safe to resume/display
+    }
+  } catch {}
+  return null;
+}
 /* ============================== passport rendering ============================== */
 const CAP_STATUS_LABEL = { VERIFIED:'verified', UNVERIFIED:'unverified', INCONCLUSIVE:'inconclusive' };
 function capStatusOf(rec, key){
@@ -1165,6 +1230,25 @@ async function init(){
     saved.forEach(s => addWallet(s.name, s.pk, false));
     const ai = parseInt(localStorage.getItem(WKEY + '_active') || '-1');
     if (ai >= 0 && ai < wallets.length){ activeIdx = ai; renderWallets(); }
+  } catch {}
+
+  /* refresh recovery: re-display THIS wallet's own in-flight/last
+     record via the user-scoped read (exact id, never global count) */
+  try {
+    const rec = await recoverActiveVerification();
+    if (rec){
+      currentVid = Number(rec.verification_id);
+      renderPassport(rec, null);
+      if (rec.state === 'SEALED'){
+        setStep(6, true);
+        setStatus('ok', 'Recovered your passport #' + rec.verification_id +
+          ': <b>' + rec.status + '</b> · score <b>' + rec.score + '/100</b>');
+      } else {
+        setStep(1, true);
+        setStatus('busy', 'Recovered your pending verification #' +
+          rec.verification_id + ' (shown below in PENDING state).');
+      }
+    }
   } catch {}
 
   buildCapabilityForm();

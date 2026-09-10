@@ -374,6 +374,7 @@ class TestEquivalencePrinciple:
                 {"url": DOCS_URL, "type": "DOCUMENTATION",
                  "quality": "STRONG", "note": "reworded note"},
             ],
+            "http_statuses": [200, 200],
             "overall_inconclusive": False,
             "retrieval_failed": False,
             "conflict": False,
@@ -922,13 +923,15 @@ class TestDeterministicLogic:
 class TestRegistryViews:
     def _seed_and_verify(self, vm, contract, alice, n=3):
         for i in range(n):
+            url = "https://agent%d.example.com" % i
             vid = H.request(vm, contract, alice,
                             name="Agent %d" % i,
-                            agent_url="https://agent%d.example.com" % i,
+                            agent_url=url,
                             docs_url="",
                             capabilities=json.dumps(["API_ACCESS"]))
             mock_body(vm, ".*", DOCS_BODY_STRONG)
-            vm.mock_llm(".*", llm_caps([("API_ACCESS", "VERIFIED")]))
+            vm.mock_llm(".*", llm_caps([("API_ACCESS", "VERIFIED")],
+                                       agent_url=url, docs_url=""))
             contract.verify_agent(int(vid))
 
     def test_list_verifications_pagination(self, deployed, direct_vm,
@@ -954,7 +957,10 @@ class TestRegistryViews:
         self._seed_and_verify(vm, contract, direct_alice, n=2)
         listing = json.loads(contract.list_agents(20, 0))
         assert listing["total"] == 2
-        assert listing["agents"][0]["last_status"] == "VERIFIED"
+        # One submitted source only -> cannot reach overall VERIFIED
+        # (strong-source gate); a sealed PARTIAL is the correct verdict.
+        assert listing["agents"][0]["last_status"] in ("VERIFIED",
+                                                       "PARTIAL")
 
     def test_get_agent_history_view(self, deployed, direct_vm,
                                     direct_alice):

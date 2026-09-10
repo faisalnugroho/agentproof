@@ -136,15 +136,23 @@ def _src(url, quality, note="", stype="DOCUMENTATION"):
 def llm_caps(statuses, sources=None, quality="STRONG",
              overall_inc=False, retrieval_failed=False, conflict=False,
              summary="Evidence evaluated against criteria.",
-             agent_url=AGENT_URL, docs_url=DOCS_URL):
-    """statuses: list of (cap_id, status) or dict {cap_id: status}."""
+             agent_url=AGENT_URL, docs_url=DOCS_URL,
+             http_status=200):
+    """statuses: list of (cap_id, status) or dict {cap_id: status}.
+
+    Default sources mirror the SUBMITTED urls (an honest LLM reports
+    the evidence it was actually given); http_status mirrors the
+    submitted URLs' fetch status so leader/validator agree on the
+    provenance fields.
+    """
     if isinstance(statuses, dict):
         caps = [_cap(k, v) for k, v in statuses.items()]
     else:
         caps = [_cap(c, s) for c, s in statuses]
     if sources is None:
-        sources = [_src(agent_url, quality),
-                   _src(docs_url, quality)]
+        sources = [_src(agent_url, quality)]
+        if docs_url:
+            sources.append(_src(docs_url, quality))
     return json.dumps({
         "capabilities": caps,
         "sources": sources,

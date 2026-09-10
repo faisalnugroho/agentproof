@@ -14,16 +14,20 @@ What it does:
      optional custom capabilities), optional description.
   2. VERIFY (`verify_agent`) runs a `gl.vm.run_nondet` leader/validator
      block that:
-       - retrieves PUBLIC evidence from the submitted URLs (bounded),
+       - retrieves PUBLIC evidence from the submitted URLs (bounded,
+         status-gated: only HTTP 2xx responses with content count),
        - has the leader LLM evaluate EVERY declared capability
          independently against explicit criteria, returning a STRICT
          structured per-capability verdict (VERIFIED / UNVERIFIED /
-         INCONCLUSIVE) plus per-source quality labels,
+         INCONCLUSIVE) plus per-source quality labels, and reports the
+         HTTP status of every submitted-URL fetch,
        - has validators INDEPENDENTLY re-run the same retrieval and
          evaluation and compare the stable decision fields (capability
-         statuses + per-source qualities + INCONCLUSIVE overall flag),
-         never the prose. A well-formed "all VERIFIED" lie is rejected
-         unless the validator's own evidence evaluation supports it.
+         statuses + per-source qualities + fetch statuses + INCONCLUSIVE
+         overall flag), never the prose. A well-formed "all VERIFIED"
+         lie is rejected unless the validator's own evidence
+         evaluation supports it; a hidden 404 cannot be claimed as a
+         successful fetch.
   3. The final passport status and score are DERIVED DETERMINISTICALLY
      by contract code from the per-capability statuses (the LLM never
      picks the overall status and never invents the score):
@@ -37,6 +41,25 @@ What it does:
          (never a misleading low score)
   4. Duplicate verification of the same agent appends to the agent's
      history — historical records are never overwritten.
+  5. USER ISOLATION (steward review fix): every record stores its owner
+     (gl.message.sender_address at request time) and the workflow
+     exposes wallet-scoped reads: get_my_verification / get_my_verifications
+     return ONLY records owned by the caller. The registry itself remains
+     intentionally PUBLIC (a capability passport is a public claim about
+     a public page — list_verifications/get_verification stay public for
+     the explorer); user isolation applies to the per-user verification
+     workflow, never to global passport visibility.
+  6. EVIDENCE PROVENANCE (steward review fix): normalized evidence is
+     restricted to UNIQUE, SUCCESSFULLY FETCHED, SUBMITTED URLs. Every
+     fetch is status-gated (only 2xx with non-empty content counts);
+     URLs the LLM mentions but were not submitted, or that failed to
+     fetch (404/500/timeout), are never sealed as evidence. Each record
+     also stores transparent per-source provenance
+     (submitted/normalized URL, fetch_success, http_status, used_as_evidence).
+  7. TAXONOMY PROTECTION (steward review fix): capability taxonomy
+     updates are owner-only (deployer), versioned (taxonomy_version),
+     and every verification record is stamped with the taxonomy
+     version it was evaluated under.
 
 Security architecture (docs/security.md):
   - The nondet block never touches storage, never transfers value,
@@ -120,6 +143,15 @@ STATE_SEALED = "SEALED"
 # If fewer than this many sources yielded ANY retrievable content, the run
 # cannot safely conclude anything -> overall INCONCLUSIVE.
 MIN_RETRIEVED_SOURCES = 1
+
+# Evidence provenance gates (steward review):
+# a fetch counts as successful only when HTTP status is in [200, 300)
+# AND the body carried non-empty content. 404/500/timeout/empty never
+# become normalized evidence.
+FETCH_STATUS_MIN = 200
+FETCH_STATUS_MAX = 299
+
+TAXONOMY_VERSION = "1.0"   # bumped on owner-approved taxonomy changes
 
 # The taxonomy is contract-owned data (stored on-chain as JSON) so new
 # capabilities can be added later WITHOUT code changes. Every entry has
@@ -229,6 +261,48 @@ def _url_ok(u) -> bool:
     return True
 
 
+def _normalize_url(u: str) -> str:
+    """Deterministic, semantics-preserving URL canonicalization.
+
+    Goal is UNIQUENESS (two equivalent submitted forms dedupe to one
+    canonical evidence entry), never aggressive rewriting:
+      - strip fragment (#...) — never sent to servers
+      - strip trailing slash on the path (except bare domain "/")
+      - lowercase scheme and host
+    Query strings, paths and ports are preserved verbatim: we do NOT
+    touch anything that could change what a server returns.
+    Invalid input returns "" (caller treats it as not-normalizable).
+    """
+    if not isinstance(u, str) or not _url_ok(u):
+        return ""
+    s = u.strip()
+    # remove fragment
+    h = s.find("#")
+    if h >= 0:
+        s = s[:h]
+    # scheme + host lowercase
+    scheme_end = s.find("://")
+    if scheme_end < 0:
+        return ""
+    scheme = s[:scheme_end].lower()
+    rest = s[scheme_end + 3:]
+    slash = rest.find("/")
+    if slash < 0:
+        host = rest.lower()
+        path = ""
+    else:
+        host = rest[:slash].lower()
+        path = rest[slash:]
+    # strip ONE trailing slash (bare "/" becomes "" — host with no
+    # path is the same resource as host + "/")
+    if len(path) >= 1 and path.endswith("/"):
+        path = path[:-1]
+    out = scheme + "://" + host + path
+    if len(out) > MAX_URL_LEN:
+        return ""
+    return out
+
+
 def _clamp(s, n: int) -> str:
     if not isinstance(s, str):
         return ""
@@ -297,22 +371,32 @@ def _parse_capabilities(caps_json: str) -> list:
 # Deterministic evidence retrieval + budgeting (shared by leader+validator)
 # ---------------------------------------------------------------------------
 
-def _fetch_sources(sources: list) -> list:
-    # Fetches each URL ONCE, keeps up to MAX_CONTENT_PER_URL chars,
-    # under a hard MAX_TOTAL_CONTENT cap (integer shares per URL,
-    # in-order redistribution — same policy on every node).
+def _fetch_sources(sources: list) -> tuple:
+    # Fetches each URL ONCE with a STATUS GATE: only HTTP 2xx responses
+    # with non-empty content count as retrieved evidence (404/500/
+    # timeout -> empty). Keeps up to MAX_CONTENT_PER_URL chars under a
+    # hard MAX_TOTAL_CONTENT cap (integer shares per URL, in-order
+    # redistribution — same policy on every node).
+    # Returns (fetched_contents, http_statuses) — both deterministic
+    # across leader and validators.
     raws = []
+    statuses = []
     for i in range(len(sources)):
         raw = ""
+        status = 0
         try:
             resp = gl.nondet.web.get(sources[i]["url"])
-            if resp.body is not None:
+            status = int(getattr(resp, "status", 0) or 0)
+            if FETCH_STATUS_MIN <= status <= FETCH_STATUS_MAX and \
+                    resp.body is not None:
                 raw = resp.body.decode("utf-8", "replace")
                 if len(raw) > MAX_CONTENT_PER_URL:
                     raw = raw[:MAX_CONTENT_PER_URL]
         except Exception:
             raw = ""
+            status = 0
         raws.append(raw)
+        statuses.append(status)
 
     fetched = [""] * len(sources)
     n = len(sources)
@@ -346,7 +430,7 @@ def _fetch_sources(sources: list) -> list:
                     changed = True
         for k in range(n):
             fetched[k] = raws[k][:alloc[k]]
-    return fetched
+    return fetched, statuses
 
 
 # ---------------------------------------------------------------------------
@@ -489,6 +573,73 @@ def _derive_passport(capabilities, result) -> dict:
     }
 
 
+def _build_evidence_sources(sources, provenance, http_statuses,
+                            llm_sources) -> tuple:
+    """Deterministic evidence restriction (steward review fix).
+
+    Returns (sealed_evidence_sources, updated_provenance):
+      - ONLY submitted URLs count: each candidate must normalize to one
+        of the record's SUBMITTED normalized URLs.
+      - ONLY successfully fetched URLs count: HTTP 2xx (the fetch of the
+        actual submitted URL — 404/500/timeout never pass).
+      - Duplicates collapse: one canonical entry per normalized URL.
+      - LLM-mentioned URLs that were never submitted or never fetched
+        (hallucinated, discovered-in-page, or dead links) are dropped.
+    Runs on the CONSENSUS RESULT inside the leader's own view of the
+    fetch (http_statuses comes from the nondet block's fetch of the
+    submitted URLs) — deterministic on every node.
+    """
+    # fetch success per submitted source (index-aligned with `sources`)
+    fetch_ok = {}
+    provenance_out = []
+    for i in range(len(sources)):
+        norm = sources[i].get("normalized_url", sources[i]["url"])
+        ok = (i < len(http_statuses)
+              and FETCH_STATUS_MIN <= http_statuses[i] <= FETCH_STATUS_MAX)
+        fetch_ok[norm] = ok
+    for p in provenance:
+        p2 = dict(p)
+        norm = p2.get("normalized_url", "")
+        if norm in fetch_ok:
+            p2["fetch_success"] = bool(fetch_ok[norm])
+            # record the actual HTTP status of the submitted-URL fetch
+            # (index-aligned with sources)
+            for i in range(len(sources)):
+                if sources[i].get("normalized_url",
+                                  sources[i]["url"]) == norm:
+                    if i < len(http_statuses):
+                        p2["http_status"] = int(http_statuses[i])
+        p2["used_as_evidence"] = False
+        provenance_out.append(p2)
+
+    sealed = []
+    seen = {}
+    for s in llm_sources:
+        if not isinstance(s, dict):
+            continue
+        raw_url = s.get("url", "")
+        if not isinstance(raw_url, str) or raw_url == "":
+            continue
+        norm = _normalize_url(raw_url)
+        # must be one of the SUBMITTED, SUCCESSFULLY FETCHED URLs
+        if norm not in fetch_ok or not fetch_ok[norm]:
+            continue
+        if norm in seen:
+            continue   # one canonical entry per normalized URL
+        seen[norm] = True
+        sealed.append({
+            "url": raw_url[:MAX_URL_LEN],
+            "normalized_url": norm,
+            "type": _clamp(s.get("type", ""), 40),
+            "quality": s.get("quality", QUALITY_NONE),
+            "note": _clamp(s.get("note", ""), 200),
+        })
+        for p in provenance_out:
+            if p.get("normalized_url") == norm:
+                p["used_as_evidence"] = True
+    return sealed, provenance_out
+
+
 # ---------------------------------------------------------------------------
 # Evaluation prompt — string concatenation (no f-strings for JSON braces)
 # ---------------------------------------------------------------------------
@@ -598,7 +749,10 @@ class AgentProof(gl.Contract):
     agents: TreeMap[str, str]
     # verification_id -> agent_key (reverse index for record -> agent)
     verification_agents: TreeMap[str, str]
-    # JSON capability taxonomy (extendable on-chain)
+    # owner address (checksummed hex str) -> JSON array of verification
+    # ids owned by that user (user-scoped workflow reads)
+    owner_verifications: TreeMap[str, str]
+    # JSON capability taxonomy (extendable on-chain, OWNER-ONLY)
     capability_registry: str
     # JSON array of all verification ids (ordered, for the explorer)
     verification_index: str
@@ -606,16 +760,19 @@ class AgentProof(gl.Contract):
     agent_index: str
 
     verification_counter: u256
+    taxonomy_update_counter: u256
     owner: Address
 
     def __init__(self):
         self.verifications = TreeMap()
         self.agents = TreeMap()
         self.verification_agents = TreeMap()
+        self.owner_verifications = TreeMap()
         self.capability_registry = DEFAULT_CAPABILITY_TAXONOMY
         self.verification_index = "[]"
         self.agent_index = "[]"
         self.verification_counter = u256(0)
+        self.taxonomy_update_counter = u256(0)
         self.owner = gl.message.sender_address
 
     # ------------------------------------------------------------------
@@ -664,6 +821,69 @@ class AgentProof(gl.Contract):
     @gl.public.view
     def get_verification_count(self) -> int:
         return int(self.verification_counter)
+
+    @gl.public.view
+    def get_my_verification(self, verification_id: u256) -> str:
+        """User-scoped read: the FULL record ONLY if it is owned by the
+        caller (gl.message.sender_address). Any other user's record —
+        including its agent data, evidence URLs, result and passport
+        contents — is never returned through the per-user workflow path:
+        the caller gets an explicit authorization error instead."""
+        vid = str(int(verification_id))
+        if vid not in self.verifications:
+            return json.dumps({"error": "not_found"})
+        rec = json.loads(self.verifications[vid])
+        if rec.get("owner", "") != self._sender():
+            return json.dumps({"error": "not_authorized",
+                               "verification_id": vid})
+        return json.dumps(rec)
+
+    @gl.public.view
+    def get_my_verifications(self, limit: int, offset: int) -> str:
+        """User-scoped list: verification summaries for records owned by
+        the CALLER only, newest first. Never exposes another user's
+        records through the per-user workflow path."""
+        owner = self._sender()
+        ids = []
+        if owner in self.owner_verifications:
+            try:
+                ids = json.loads(self.owner_verifications[owner])
+            except Exception:
+                ids = []
+        total = len(ids)
+        if limit <= 0 or limit > 50:
+            limit = 20
+        if offset < 0:
+            offset = 0
+        if offset > total:
+            offset = total
+        start = total - offset - limit
+        if start < 0:
+            start = 0
+        end = total - offset
+        if end < 0:
+            end = 0
+        page = []
+        for i in range(end - 1, start - 1, -1):
+            vid = str(ids[i])
+            if vid in self.verifications:
+                rec = json.loads(self.verifications[vid])
+                page.append({
+                    "verification_id": rec["verification_id"],
+                    "agent_name": rec["agent_name"],
+                    "agent_url": rec["agent_url"],
+                    "status": rec["status"],
+                    "score": rec["score"],
+                    "state": rec.get("state", ""),
+                    "created_at": rec.get("created_at", ""),
+                })
+        return json.dumps({
+            "owner": owner,
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "verifications": page,
+        })
 
     @gl.public.view
     def list_verifications(self, limit: int, offset: int) -> str:
@@ -785,6 +1005,8 @@ class AgentProof(gl.Contract):
             "name": "AgentProof",
             "verification_version": VERIFICATION_VERSION,
             "verification_counter": str(int(self.verification_counter)),
+            "taxonomy_version": TAXONOMY_VERSION,
+            "taxonomy_updates": str(int(self.taxonomy_update_counter)),
             "owner": str(self.owner),
             "thresholds": {
                 "verified": THRESHOLD_VERIFIED,
@@ -806,6 +1028,14 @@ class AgentProof(gl.Contract):
     def add_capability_definition(self, capability_json: str) -> str:
         # Extend the taxonomy on-chain (new capabilities later). The
         # verification criteria are part of consensus from then on.
+        # OWNER-ONLY (steward review fix): a regular verification caller
+        # must never be able to redefine what "verified" means. Only the
+        # deployer (stored at init) can modify the taxonomy; every change
+        # is counted in taxonomy_update_counter and every verification
+        # record is stamped with the taxonomy version it ran under.
+        if str(gl.message.sender_address) != str(self.owner):
+            raise gl.vm.UserError(
+                "only the contract owner can modify the capability taxonomy")
         try:
             cap = json.loads(capability_json)
         except Exception:
@@ -836,6 +1066,8 @@ class AgentProof(gl.Contract):
         }
         taxonomy.append(entry)
         self.capability_registry = json.dumps(taxonomy)
+        self.taxonomy_update_counter = u256(
+            int(self.taxonomy_update_counter) + 1)
         return cid
 
     @gl.public.write
@@ -909,14 +1141,40 @@ class AgentProof(gl.Contract):
         vid = int(self.verification_counter) + 1
         self.verification_counter = u256(vid)
 
-        sources = [{
-            "url": agent_url,
-            "type": SOURCE_TYPE_AGENT_WEBSITE,
-        }]
-        if doc_url != "":
+        # ---- evidence sources: SUBMITTED URLs only, deterministically
+        # normalized and deduplicated (steward review fix). Duplicated
+        # submitted URLs (agent URL == docs URL, trailing slash, case
+        # differences) collapse to ONE canonical entry so no URL can be
+        # double-counted as evidence. The record keeps both the
+        # submitted and normalized form for transparency.
+        sources = []
+        seen_normalized = {}
+        provenance = []
+        for entry in (
+            {"url": agent_url, "type": SOURCE_TYPE_AGENT_WEBSITE},
+            {"url": doc_url, "type": SOURCE_TYPE_DOCUMENTATION} if doc_url != "" else None,
+        ):
+            if entry is None:
+                continue
+            normalized = _normalize_url(entry["url"])
+            if normalized == "":
+                raise gl.vm.UserError(
+                    "evidence URL could not be normalized: " + entry["url"])
+            if normalized in seen_normalized:
+                continue   # duplicate normalized URL -> one entry
+            seen_normalized[normalized] = True
             sources.append({
-                "url": doc_url,
-                "type": SOURCE_TYPE_DOCUMENTATION,
+                "url": entry["url"],
+                "normalized_url": normalized,
+                "type": entry["type"],
+            })
+            provenance.append({
+                "submitted_url": entry["url"],
+                "normalized_url": normalized,
+                "source_type": entry["type"],
+                "fetch_success": False,
+                "http_status": 0,
+                "used_as_evidence": False,
             })
 
         now = self._now()
@@ -928,6 +1186,7 @@ class AgentProof(gl.Contract):
             "declared_capabilities": [c["key"] for c in caps_out],
             "capability_objects": caps_out,
             "sources": sources,
+            "source_provenance": provenance,
             "status": "PENDING",
             "score": 0,
             "verified_capabilities": [],
@@ -941,7 +1200,9 @@ class AgentProof(gl.Contract):
             "created_at": str(now),
             "verified_at": "",
             "verification_version": VERIFICATION_VERSION,
+            "taxonomy_version": TAXONOMY_VERSION,
             "submitter": self._sender(),
+            "owner": self._sender(),
         }
 
         key = agent_url.strip().lower()
@@ -975,6 +1236,19 @@ class AgentProof(gl.Contract):
 
         self.verifications[str(vid)] = json.dumps(record)
         self.verification_agents[str(vid)] = key
+
+        # owner index: per-user verification ids (user-scoped workflow)
+        owner_key = self._sender()
+        if owner_key in self.owner_verifications:
+            try:
+                oids = json.loads(self.owner_verifications[owner_key])
+            except Exception:
+                oids = []
+        else:
+            oids = []
+        oids.append(vid)
+        self.owner_verifications[owner_key] = json.dumps(oids)
+
         try:
             vidx = json.loads(self.verification_index)
         except Exception:
@@ -1014,9 +1288,12 @@ class AgentProof(gl.Contract):
         capabilities = rec["capability_objects"]      # memory copy
         sources = rec["sources"]                      # memory copy
         cap_keys = [c["key"] for c in capabilities]
+        normalized_set = {}
+        for s in sources:
+            normalized_set[s.get("normalized_url", s["url"])] = True
 
         def leader_fn() -> dict:
-            fetched = _fetch_sources(sources)
+            fetched, http_statuses = _fetch_sources(sources)
             prompt = _build_prompt(agent_name, description, capabilities,
                                    sources, fetched)
             raw = gl.nondet.exec_prompt(prompt, response_format="json")
@@ -1025,7 +1302,13 @@ class AgentProof(gl.Contract):
                     raw = json.loads(raw)
                 except Exception:
                     raw = {}
-            return _normalize_llm(raw, capabilities)
+            out = _normalize_llm(raw, capabilities)
+            # The submitted URLs' HTTP statuses travel WITH the result so
+            # validators independently confirm which evidence URLs were
+            # actually fetched successfully (a 404/500 one node sees but
+            # the leader hides cannot seal as fetched evidence).
+            out["http_statuses"] = http_statuses
+            return out
 
         def validator_fn(leader_res) -> bool:
             # GATE 1 — structural conformance of the leader's output.
@@ -1051,13 +1334,20 @@ class AgentProof(gl.Contract):
                                             QUALITY_MODERATE,
                                             QUALITY_WEAK, QUALITY_NONE):
                     return False
+            lhs = ld.get("http_statuses")
+            if not isinstance(lhs, list) or len(lhs) != len(sources):
+                return False
+            for st in lhs:
+                if not isinstance(st, int) or st < 0 or st > 999:
+                    return False
             # GATE 2 — INDEPENDENT re-evaluation. The validator does
             # NOT trust the leader: it re-runs the same retrieval +
             # evaluation pipeline itself and compares only the STABLE
             # DECISION FIELDS (capability statuses, per-source qualities,
-            # boolean flags). Prose (evidence/reason/summary) is
-            # deliberately NOT compared — two honest evaluations may
-            # word things differently (Equivalence Principle).
+            # boolean flags, and the submitted URLs' fetch statuses).
+            # Prose (evidence/reason/summary) is deliberately NOT
+            # compared — two honest evaluations may word things
+            # differently (Equivalence Principle).
             mine = leader_fn()
             if not isinstance(mine, dict):
                 return False
@@ -1076,6 +1366,15 @@ class AgentProof(gl.Contract):
                     return False
                 if lsrc[i].get("quality") != msrc[i].get("quality"):
                     return False
+            # fetch statuses of the submitted URLs must agree — this is
+            # what makes "successfully fetched" a consensus-verified
+            # fact rather than a leader claim.
+            mhs = mine.get("http_statuses", [])
+            if len(mhs) != len(lhs):
+                return False
+            for i in range(len(lhs)):
+                if int(lhs[i]) != int(mhs[i]):
+                    return False
             for flag in ("overall_inconclusive", "retrieval_failed",
                          "conflict"):
                 if bool(ld.get(flag)) != bool(mine.get(flag)):
@@ -1085,6 +1384,14 @@ class AgentProof(gl.Contract):
         result = gl.vm.run_nondet(leader_fn, validator_fn)
 
         # ----- deterministic post-consensus passport sealing -----
+        # EVIDENCE RESTRICTION (steward review fix): only unique,
+        # successfully fetched, SUBMITTED URLs become normalized
+        # evidence. The derivation then runs on the restricted list —
+        # a hallucinated or dead URL can never support a VERIFIED gate.
+        sealed_sources, provenance = _build_evidence_sources(
+            sources, rec.get("source_provenance", []),
+            result.get("http_statuses", []), result.get("sources", []))
+        result["sources"] = sealed_sources
         passport = _derive_passport(capabilities, result)
         now = self._now()
 
@@ -1096,7 +1403,8 @@ class AgentProof(gl.Contract):
         rec["inconclusive_capabilities"] = passport[
             "inconclusive_capabilities"]
         rec["capability_details"] = passport["capability_details"]
-        rec["evidence_sources"] = result["sources"]
+        rec["evidence_sources"] = sealed_sources
+        rec["source_provenance"] = provenance
         rec["summary"] = result["summary"]
 
         limitations = []
