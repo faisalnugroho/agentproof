@@ -780,5 +780,78 @@
       "address": "0xd25Cc0910d67CBe06E228CAFD5382638DF9d9Ca4",
       "status": "CURRENT \u2014 S1-S7 all pass"
     }
+  },
+  "live_concurrent_user_isolation": {
+    "note": "Live two-user concurrency test (tests/frontend/live_two_user_concurrent.mjs) run against the v3 contract on GenLayer Studionet. Genuinely on-chain: real state-committing writeContract transactions (no simulateWriteContract anywhere in the test); all four txs FINALIZED. Wallet keys were ephemeral single-use test keys (testnet funds only) and were not retained; the addresses below are public on-chain data.",
+    "executed_at_utc": "2026-09-10T05:30:10Z",
+    "completed_at_utc": "2026-09-10T05:31:46Z",
+    "contract": "0xd25Cc0910d67CBe06E228CAFD5382638DF9d9Ca4",
+    "wallets": {
+      "wallet_a_address": "0x3B4aE0842F16791eF47652f1cC4Fa063F0fb33BE",
+      "wallet_b_address": "0x4f53b48B3e8eB2dA620b788E5A4cced8088Fad1e"
+    },
+    "verification_ids": {
+      "wallet_a": 10,
+      "wallet_b": 11,
+      "ids_freshly_minted_by_this_run": true,
+      "ids_distinct": true,
+      "source_of_ids": "each wallet's own request receipt (consensus_data.leader_receipt result), never the global verification count"
+    },
+    "transactions": {
+      "wallet_a_request_tx": "0xa772b9350f1bc179f5c5f5e2252bda5d18757c8e190ca37376ae3e46f255c32f",
+      "wallet_b_request_tx": "0xe9bf49567f57eb5f9e66a5603c9378eaf7d29782a33059b22e13c25a3ade0e08",
+      "wallet_b_verify_tx_seal_first": "0xee781c44a56ed43444c5cbb365d17e68016ffb9d3e5ca3afa3423470b01443ce",
+      "wallet_a_verify_tx_seal_second": "0xb99aa990a1b7db0bbff302a399c128122bce7e8e8a9c5912452b407f37a570f2",
+      "all_finalized": true
+    },
+    "concurrent_submission": {
+      "both_records_created_at_epoch": 1789018210,
+      "both_records_created_at_utc": "2026-09-10T05:30:10Z",
+      "wallet_a_request_tx_ts_utc": "2026-09-10T05:30:10.500034+00:00",
+      "wallet_b_request_tx_ts_utc": "2026-09-10T05:30:10.865684+00:00",
+      "detail": "both request txs submitted in the same second; both on-chain records share created_at epoch 1789018210"
+    },
+    "reversed_finalization": {
+      "b_sealed_first_utc": "2026-09-10T05:30:55Z",
+      "b_verified_at_epoch": 1789018255,
+      "a_sealed_second_utc": "2026-09-10T05:31:46Z",
+      "a_verified_at_epoch": 1789018306,
+      "order": "B (#11) sealed before A (#10) although A holds the lower verification id",
+      "correlation_preserved": "A's record is 'Concurrent Agent A', B's record is 'Concurrent Agent B' - no swap despite reversed finalization order",
+      "sealed_states_on_chain": {
+        "id_10": "SEALED / PARTIAL",
+        "id_11": "SEALED / INCONCLUSIVE"
+      }
+    },
+    "own_record_read": {
+      "wallet_a": "PASS - get_my_verification(10) by wallet A returned its own SEALED record (agent_name 'Concurrent Agent A')",
+      "wallet_b": "PASS - get_my_verification(11) by wallet B returned its own SEALED record (agent_name 'Concurrent Agent B')"
+    },
+    "cross_user_read_denial": {
+      "wallet_a_read_wallet_b_record_11": {
+        "error": "not_authorized",
+        "verification_id": "11"
+      },
+      "wallet_b_read_wallet_a_record_10": {
+        "error": "not_authorized",
+        "verification_id": "10"
+      },
+      "no_record_data_leaked": true
+    },
+    "per_user_listing_isolation": {
+      "wallet_a_listing_ids": [
+        "10"
+      ],
+      "wallet_b_listing_ids": [
+        "11"
+      ]
+    },
+    "assertions": {
+      "passed": 14,
+      "failed": 0,
+      "result": "ALL_OK: live concurrent two-user isolation verified",
+      "exit_code": 0,
+      "correction_note": "The test source contains 14 assert() call sites (an earlier informal count of 15 included the 'function assert(' definition line); the recovered run output shows exactly 14 PASS lines, 0 FAIL, ALL_OK, exit 0."
+    }
   }
 }
