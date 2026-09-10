@@ -367,15 +367,26 @@ def main():
     urls = [s.get("normalized_url", s.get("url")) for s in sealed_sources]
     prov404 = [p for p in prov_rows
                if "404" in str(p.get("submitted_url", ""))]
-    prov404_ok = (len(prov404) == 1
+    s6_sealed = prov["record"].get("state") == "SEALED"
+    # The assertion is ONLY valid on a SEALED record: an unsealed
+    # (stuck-PENDING) record's provenance is just the request-time
+    # default and would pass vacuously. A stuck record is a FAIL.
+    prov404_ok = (s6_sealed
+                  and len(prov404) == 1
                   and prov404[0].get("fetch_success") is False
                   and prov404[0].get("used_as_evidence") is False
                   and all("nonexistent-404" not in (u or "")
                           for u in urls))
-    print(f"EVIDENCE_404_EXCLUDED: {prov404_ok} "
-          f"(sealed_urls={urls}, prov404={prov404})", flush=True)
+    print(f"EVIDENCE_404_EXCLUDED: {prov404_ok} (sealed={s6_sealed}, "
+          f"sealed_urls={urls}, prov404={prov404})", flush=True)
+    if not s6_sealed:
+        raise RuntimeError(
+            "S6 FAILED: the 404-evidence record never sealed "
+            f"(state={prov['record'].get('state')}) — the 404-exclusion "
+            "assertion would be vacuous. Fix the contract and rerun.")
     log["s6_evidence_404_excluded"] = {
-        "ok": prov404_ok, "sealed_urls": urls, "provenance_404": prov404}
+        "ok": prov404_ok, "sealed": s6_sealed,
+        "sealed_urls": urls, "provenance_404": prov404}
 
     # ---------------- S7 taxonomy authorization (steward) ----------------
     # A NON-OWNER account must NOT be able to modify the taxonomy.

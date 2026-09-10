@@ -677,6 +677,14 @@ PROMPT_RULES = (
     "  true. If sources significantly conflict, set conflict true.\n"
     "- R9. Missing, empty or truncated evidence must NEVER become\n"
     "  VERIFIED. When in doubt, INCONCLUSIVE.\n"
+    "- R10. Fetch failure is authoritative: if a capability's evaluation\n"
+    "  rests on sources whose retrieval FAILED (shown as content\n"
+    "  '<fetch failed or empty>', including HTTP 404/500 and timeouts),\n"
+    "  that capability is INCONCLUSIVE - a dead or erroring URL proves\n"
+    "  nothing about the agent itself. NEVER mark a capability\n"
+    "  UNVERIFIED merely because a submitted URL failed to fetch;\n"
+    "  UNVERIFIED requires RETRIEVED evidence showing the capability\n"
+    "  is absent or supported only by marketing language.\n"
 )
 
 PROMPT_OUTPUT_CONTRACT = (

@@ -577,12 +577,12 @@ footer .fl{font-family:'IBM Plex Mono',monospace;font-size:11.5px;line-height:2}
 'use strict';
 
 /* ============================== CONFIG ============================== */
-/* CONTRACT is injected at deploy time: either window.AGENTPROOF_CONTRACT
-   (set via contract-address.js, gitignored locally) or the baked-in
-   fallback for the live Studionet deployment. */
+/* CONTRACT is injected via contract-address.js (window.AGENTPROOF_CONTRACT);
+   the baked-in fallback below matches it and is used only if that file
+   ever fails to load. */
 const CONTRACT = window.AGENTPROOF_CONTRACT && /^0x[0-9a-fA-F]{40}$/.test(window.AGENTPROOF_CONTRACT || '')
   ? window.AGENTPROOF_CONTRACT
-  : '__CONTRACT_ADDRESS__';
+  : '0xd25Cc0910d67CBe06E228CAFD5382638DF9d9Ca4';
 const EXPLORER_ADDR = 'https://explorer-studio.genlayer.com/address/';
 const EXPLORER_TX = 'https://explorer-studio.genlayer.com/tx/';
 const SDK = window.GenLayerSDK;

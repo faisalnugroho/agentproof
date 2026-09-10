@@ -2,17 +2,21 @@
   "smoke_plan": {
     "s1_s3_determinism": "Tavily Web Search Agent: 3 fresh consensus runs, stable status family expected",
     "s4_negative": "HypeBot 9000: marketing-only evidence must never yield VERIFIED",
-    "s5_views": "list_verifications + get_agent readback"
+    "s5_views": "list_verifications + get_agent readback",
+    "s6_evidence_provenance": "404 docs URL must never seal as normalized evidence (steward fix)",
+    "s7_taxonomy_authorization": "non-owner add_capability_definition must be rejected (steward fix)"
   },
   "deploy": {
-    "tx_hash": "0x7a8b70a8155965afbca5c37ef3fe1bc486736cdafcf27dcff71758988f18ab9d",
-    "address": "0x87303D30DA71a47221A5fe5aD6aBC7350384B770",
+    "tx_hash": "0x7b33041a2738ce0b0e6c68e9806dd9086e6069b9082d063d9adc79bc5d487b4f",
+    "address": "0xd25Cc0910d67CBe06E228CAFD5382638DF9d9Ca4",
     "deployer": "0x5E77b8D3655918454134a2d5BAd9dd76B741b4cB"
   },
   "contract_info": {
     "name": "AgentProof",
     "verification_version": "1.0",
     "verification_counter": "0",
+    "taxonomy_version": "1.0",
+    "taxonomy_updates": "0",
     "owner": "0x5E77b8D3655918454134a2d5BAd9dd76B741b4cB",
     "thresholds": {
       "verified": 80,
@@ -27,8 +31,8 @@
   },
   "s1_determinism": {
     "verification_id": 1,
-    "request_tx": "0xe939becf9825fe39347762fc6806a876dd7bed22f342c57379190ef9430789f6",
-    "verify_tx": "0x60f2c810ffc8315a870e65c1607f1f50d40beab8b7420a9e7cacd83302bb4865",
+    "request_tx": "0xa3b61f3cd1a28337a754845d13fcdfc60325fab864869f8b1159aad732b4809c",
+    "verify_tx": "0x8289285176b54864f5b4a878f7efa1bfa713280c2a35113558055264cae82c4b",
     "consensus_rounds": [
       "MAJORITY_AGREE"
     ],
@@ -43,7 +47,7 @@
     "unsupported": [],
     "inconclusive": [],
     "strong_sources": 2,
-    "verify_secs": 71.9,
+    "verify_secs": 85.5,
     "record": {
       "verification_id": "1",
       "agent_name": "Tavily Web Search Agent",
@@ -80,11 +84,31 @@
       "sources": [
         {
           "url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "normalized_url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
           "type": "AGENT_WEBSITE"
         },
         {
           "url": "https://docs.tavily.com/llms.txt",
+          "normalized_url": "https://docs.tavily.com/llms.txt",
           "type": "DOCUMENTATION"
+        }
+      ],
+      "source_provenance": [
+        {
+          "submitted_url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "normalized_url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "source_type": "AGENT_WEBSITE",
+          "fetch_success": true,
+          "http_status": 200,
+          "used_as_evidence": true
+        },
+        {
+          "submitted_url": "https://docs.tavily.com/llms.txt",
+          "normalized_url": "https://docs.tavily.com/llms.txt",
+          "source_type": "DOCUMENTATION",
+          "fetch_success": true,
+          "http_status": 200,
+          "used_as_evidence": true
         }
       ],
       "status": "VERIFIED",
@@ -98,51 +122,55 @@
       "inconclusive_capabilities": [],
       "capability_details": [
         {
-          "evidence": "OpenAPI spec defines POST /search endpoint with query parameter for executing searches.",
+          "evidence": "OpenAPI spec at /search endpoint documents real-time web search with parameters (query, search_depth, topic, time_range, max_results). llms.txt describes Search, Extract, Crawl, Research capabilities with concrete usage examples.",
           "id": "WEB_RESEARCH",
-          "reason": "Concrete endpoint proves web search functionality.",
+          "reason": "Concrete API endpoint, full schema, and technical documentation confirm web search/retrieval functionality beyond marketing language.",
           "status": "VERIFIED"
         },
         {
-          "evidence": "OpenAPI definition provides real endpoint URL (https://api.tavily.com/search) and request schema.",
+          "evidence": "OpenAPI 3.0.3 spec shows POST /search at https://api.tavily.com/ with full request schema. llms.txt references API key auth, rate limits, and multiple endpoints (search, extract, crawl, map, research).",
           "id": "API_ACCESS",
-          "reason": "Shows publicly documented API access details.",
+          "reason": "Real endpoint URL, authentication details, and machine-readable OpenAPI schema constitute strong technical proof of public API access.",
           "status": "VERIFIED"
         },
         {
-          "evidence": "Docs page https://docs.tavily.com/llms.txt lists API references, guides, and CLI usage.",
+          "evidence": "https://docs.tavily.com/llms.txt is reachable with substantive content: API reference links, quickstart guides, CLI instructions, MCP server config, and capability descriptions with concrete examples.",
           "id": "DOCUMENTATION",
-          "reason": "Reachable page with substantive technical content.",
+          "reason": "Working documentation URL with extensive technical content including guides, API references, and working examples \u2014 not a placeholder page.",
           "status": "VERIFIED"
         }
       ],
       "evidence_sources": [
         {
-          "note": "OpenAPI spec for /search endpoint.",
+          "url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "normalized_url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "type": "API_DOCUMENTATION",
           "quality": "STRONG",
-          "type": "AGENT_WEBSITE",
-          "url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md"
+          "note": "Official OpenAPI 3.0.3 spec for POST /search endpoint with full request schema and parameter descriptions."
         },
         {
-          "note": "Documentation index linking to API reference and guides.",
-          "quality": "MODERATE",
+          "url": "https://docs.tavily.com/llms.txt",
+          "normalized_url": "https://docs.tavily.com/llms.txt",
           "type": "DOCUMENTATION",
-          "url": "https://docs.tavily.com/llms.txt"
+          "quality": "STRONG",
+          "note": "Official documentation index with technical content covering all capabilities, connection methods, and API references."
         }
       ],
-      "summary": "Evidence includes a detailed OpenAPI spec for the search endpoint and a comprehensive documentation index, confirming web search, API access, and public documentation capabilities.",
+      "summary": "Both sources were successfully retrieved and provide strong technical evidence. The OpenAPI spec confirms a real REST API at api.tavily.com with concrete endpoints and schemas. The documentation index confirms public docs with substantive technical content. All three declared capabilities are VERIFIED with strong evidence.",
       "limitations": [],
       "state": "SEALED",
-      "created_at": "1788703499",
-      "verified_at": "1788703543",
+      "created_at": "1789015332",
+      "verified_at": "1789015375",
       "verification_version": "1.0",
-      "submitter": "0x5E77b8D3655918454134a2d5BAd9dd76B741b4cB"
+      "taxonomy_version": "1.0",
+      "submitter": "0x5E77b8D3655918454134a2d5BAd9dd76B741b4cB",
+      "owner": "0x5E77b8D3655918454134a2d5BAd9dd76B741b4cB"
     }
   },
   "s2_determinism": {
     "verification_id": 2,
-    "request_tx": "0x4a01bc52ecaeb070b1ce3109ddf724e55bb9b3596ad8bde0bf2e95c4760986ba",
-    "verify_tx": "0xd05afdc1cfd973203258a92a94754165c507c23e6626ae3065cfe6a166b87db0",
+    "request_tx": "0xbf2ed3b6285b13a1d09d2a6023676a003d28dd8ecf619a8d5709bbaf2d50dae9",
+    "verify_tx": "0x6c316fbc5eaa8c36458670ab71586a3c4a135072ec6a5348fbac46a401f65c13",
     "consensus_rounds": [
       "MAJORITY_AGREE"
     ],
@@ -157,7 +185,7 @@
     "unsupported": [],
     "inconclusive": [],
     "strong_sources": 2,
-    "verify_secs": 123.5,
+    "verify_secs": 68.2,
     "record": {
       "verification_id": "2",
       "agent_name": "Tavily Web Search Agent",
@@ -194,11 +222,31 @@
       "sources": [
         {
           "url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "normalized_url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
           "type": "AGENT_WEBSITE"
         },
         {
           "url": "https://docs.tavily.com/llms.txt",
+          "normalized_url": "https://docs.tavily.com/llms.txt",
           "type": "DOCUMENTATION"
+        }
+      ],
+      "source_provenance": [
+        {
+          "submitted_url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "normalized_url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "source_type": "AGENT_WEBSITE",
+          "fetch_success": true,
+          "http_status": 200,
+          "used_as_evidence": true
+        },
+        {
+          "submitted_url": "https://docs.tavily.com/llms.txt",
+          "normalized_url": "https://docs.tavily.com/llms.txt",
+          "source_type": "DOCUMENTATION",
+          "fetch_success": true,
+          "http_status": 200,
+          "used_as_evidence": true
         }
       ],
       "status": "VERIFIED",
@@ -212,51 +260,55 @@
       "inconclusive_capabilities": [],
       "capability_details": [
         {
-          "evidence": "OpenAPI spec defines POST /search with query, depth, and result fields.",
+          "evidence": "Source 1 shows OpenAPI for POST /search at https://api.tavily.com/ with request schema and parameters for executing search queries.",
           "id": "WEB_RESEARCH",
-          "reason": "Concrete endpoint and request schema demonstrate web search functionality.",
+          "reason": "Concrete API documentation proves web search/retrieval functionality beyond marketing claims.",
           "status": "VERIFIED"
         },
         {
-          "evidence": "OpenAPI spec lists server URL https://api.tavily.com/ and POST /search; docs mention API key usage.",
+          "evidence": "Source 1 contains public OpenAPI details: server URL https://api.tavily.com/, POST /search endpoint, request body schema, enums, defaults.",
           "id": "API_ACCESS",
-          "reason": "Public API endpoint with authentication details confirms API access capability.",
+          "reason": "Public API reference with real endpoint and schema is concrete proof of API access.",
           "status": "VERIFIED"
         },
         {
-          "evidence": "https://docs.tavily.com/llms.txt provides index, guides, and links to detailed API pages.",
+          "evidence": "Source 2 is a reachable docs index with substantive technical content: setup, CLI, MCP URL, API reference links, quickstart, rate limits.",
           "id": "DOCUMENTATION",
-          "reason": "Reachable documentation page contains substantive technical content.",
+          "reason": "Working public documentation URL contains substantial technical guidance and references.",
           "status": "VERIFIED"
         }
       ],
       "evidence_sources": [
         {
-          "note": "OpenAPI definition of the /search endpoint.",
+          "url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "normalized_url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "type": "API_DOCUMENTATION",
           "quality": "STRONG",
-          "type": "AGENT_WEBSITE",
-          "url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md"
+          "note": "Official API reference with OpenAPI endpoint and schema details."
         },
         {
-          "note": "Documentation index with links, API usage notes, and CLI examples.",
-          "quality": "MODERATE",
+          "url": "https://docs.tavily.com/llms.txt",
+          "normalized_url": "https://docs.tavily.com/llms.txt",
           "type": "DOCUMENTATION",
-          "url": "https://docs.tavily.com/llms.txt"
+          "quality": "MODERATE",
+          "note": "Official docs index with setup, CLI, MCP, and API reference links."
         }
       ],
-      "summary": "Evidence includes a full OpenAPI spec for the search endpoint and an accessible docs index, providing strong proof of web search, API access, and public documentation capabilities.",
+      "summary": "Official retrieved docs provide strong technical proof for Tavily web search and API access, plus reachable substantive public documentation. No significant conflicts or fetch failures appear in the supplied evidence.",
       "limitations": [],
       "state": "SEALED",
-      "created_at": "1788703612",
-      "verified_at": "1788703651",
+      "created_at": "1789015461",
+      "verified_at": "1789015498",
       "verification_version": "1.0",
-      "submitter": "0x5E77b8D3655918454134a2d5BAd9dd76B741b4cB"
+      "taxonomy_version": "1.0",
+      "submitter": "0x5E77b8D3655918454134a2d5BAd9dd76B741b4cB",
+      "owner": "0x5E77b8D3655918454134a2d5BAd9dd76B741b4cB"
     }
   },
   "s3_determinism": {
     "verification_id": 3,
-    "request_tx": "0x7e2bdef9b2dab7baf94e67dc8cb7c2bbe4389bc94ba183d6f03e25b60bec78bd",
-    "verify_tx": "0x1aaea7ca2bb7e655bb73d095b499361e606f0bc32e621c3bfc4ed94b10d72648",
+    "request_tx": "0xdbf46c64778670eb70e0ad6b8fd34a47d7285d3fa2372157eef8dff6adac1694",
+    "verify_tx": "0x545811eb07a75501a8f7f4137e1ca0d05f3dade22b03baf0fc4ccdff59b0968f",
     "consensus_rounds": [
       "MAJORITY_AGREE"
     ],
@@ -271,7 +323,7 @@
     "unsupported": [],
     "inconclusive": [],
     "strong_sources": 2,
-    "verify_secs": 72.2,
+    "verify_secs": 59.5,
     "record": {
       "verification_id": "3",
       "agent_name": "Tavily Web Search Agent",
@@ -308,11 +360,31 @@
       "sources": [
         {
           "url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "normalized_url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
           "type": "AGENT_WEBSITE"
         },
         {
           "url": "https://docs.tavily.com/llms.txt",
+          "normalized_url": "https://docs.tavily.com/llms.txt",
           "type": "DOCUMENTATION"
+        }
+      ],
+      "source_provenance": [
+        {
+          "submitted_url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "normalized_url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "source_type": "AGENT_WEBSITE",
+          "fetch_success": true,
+          "http_status": 200,
+          "used_as_evidence": true
+        },
+        {
+          "submitted_url": "https://docs.tavily.com/llms.txt",
+          "normalized_url": "https://docs.tavily.com/llms.txt",
+          "source_type": "DOCUMENTATION",
+          "fetch_success": true,
+          "http_status": 200,
+          "used_as_evidence": true
         }
       ],
       "status": "VERIFIED",
@@ -326,45 +398,49 @@
       "inconclusive_capabilities": [],
       "capability_details": [
         {
-          "evidence": "OpenAPI spec defines POST /search with query, depth, results params; docs describe Search, Extract, Crawl, Map, Research capabilities.",
+          "evidence": "OpenAPI spec shows POST /search endpoint that executes a search query, with parameters like query, search_depth, etc.",
           "id": "WEB_RESEARCH",
-          "reason": "Concrete web search endpoint and parameters are documented, satisfying the criteria.",
+          "reason": "Concrete endpoint demonstrates ability to perform web search, meeting the verification criteria.",
           "status": "VERIFIED"
         },
         {
-          "evidence": "OpenAPI lists server https://api.tavily.com/ and POST /search endpoint with request schema; docs reference SDK/API and MCP server.",
+          "evidence": "OpenAPI definition provides full endpoint URL https://api.tavily.com/ and request schema for the /search operation.",
           "id": "API_ACCESS",
-          "reason": "Public API documentation includes real endpoint, server URL, and schemas.",
+          "reason": "Public API endpoint with authentication details and request format satisfies the API access requirement.",
           "status": "VERIFIED"
         },
         {
-          "evidence": "llms.txt provides a substantive docs index with quickstart, API reference, CLI commands, and capability guides; source 1 is a detailed API page.",
+          "evidence": "Docs page https://docs.tavily.com/documentation/api-reference/endpoint/search.md contains technical details, request schema, and usage examples.",
           "id": "DOCUMENTATION",
-          "reason": "Reachable official documentation contains extensive technical content.",
+          "reason": "Reachable, substantive documentation URL fulfills the documentation capability criteria.",
           "status": "VERIFIED"
         }
       ],
       "evidence_sources": [
         {
-          "note": "OpenAPI spec for Tavily Search endpoint with full request schema.",
-          "quality": "STRONG",
+          "url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "normalized_url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
           "type": "AGENT_WEBSITE",
-          "url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md"
+          "quality": "STRONG",
+          "note": "Provides OpenAPI spec for /search endpoint with full technical details."
         },
         {
-          "note": "Official docs index listing endpoints, CLI, MCP, and capabilities.",
-          "quality": "STRONG",
+          "url": "https://docs.tavily.com/llms.txt",
+          "normalized_url": "https://docs.tavily.com/llms.txt",
           "type": "DOCUMENTATION",
-          "url": "https://docs.tavily.com/llms.txt"
+          "quality": "MODERATE",
+          "note": "Index of Tavily documentation and CLI usage overview."
         }
       ],
-      "summary": "Official Tavily docs and OpenAPI spec provide concrete endpoints, parameters, and usage for search, API access, and documentation.",
+      "summary": "All three declared capabilities are verified based on strong OpenAPI documentation and accessible technical docs; no retrieval failures or conflicting evidence were found.",
       "limitations": [],
       "state": "SEALED",
-      "created_at": "1788703781",
-      "verified_at": "1788703820",
+      "created_at": "1789015568",
+      "verified_at": "1789015607",
       "verification_version": "1.0",
-      "submitter": "0x5E77b8D3655918454134a2d5BAd9dd76B741b4cB"
+      "taxonomy_version": "1.0",
+      "submitter": "0x5E77b8D3655918454134a2d5BAd9dd76B741b4cB",
+      "owner": "0x5E77b8D3655918454134a2d5BAd9dd76B741b4cB"
     }
   },
   "determinism": {
@@ -380,8 +456,8 @@
   },
   "s4_negative": {
     "verification_id": 4,
-    "request_tx": "0x3e3c02f88a93e4e5096ed434d7a0054ca98c778ee72a3406dd92b8bfa3cfd787",
-    "verify_tx": "0x3de47ea1d1f414cae0da3169dd12ef4373d43b98474a00e10186b69c79d05c0a",
+    "request_tx": "0xe39a56a8b32a9fb32c65e24e09912474e2bb09761968946128f07ccfe59f5a5a",
+    "verify_tx": "0x56c42587106a89d69afa1bf28900d75ac3a490124c7c3dc07b1e002f7f7d77e1",
     "consensus_rounds": [
       "MAJORITY_AGREE"
     ],
@@ -396,7 +472,7 @@
       "AUTONOMOUS_EXECUTION"
     ],
     "strong_sources": 0,
-    "verify_secs": 101.6,
+    "verify_secs": 95.5,
     "record": {
       "verification_id": "4",
       "agent_name": "HypeBot 9000",
@@ -433,7 +509,18 @@
       "sources": [
         {
           "url": "https://example.com/",
+          "normalized_url": "https://example.com",
           "type": "AGENT_WEBSITE"
+        }
+      ],
+      "source_provenance": [
+        {
+          "submitted_url": "https://example.com/",
+          "normalized_url": "https://example.com",
+          "source_type": "AGENT_WEBSITE",
+          "fetch_success": true,
+          "http_status": 200,
+          "used_as_evidence": true
         }
       ],
       "status": "INCONCLUSIVE",
@@ -447,33 +534,34 @@
       ],
       "capability_details": [
         {
-          "evidence": "No relevant content about HypeBot 9000 or MCP integration found in source.",
+          "evidence": "No MCP-related configuration, protocol docs, or client setup found.",
           "id": "MCP_SUPPORT",
-          "reason": "Source is a generic placeholder page with no agent-specific technical evidence.",
+          "reason": "Evidence is irrelevant; cannot confirm or deny MCP support.",
           "status": "INCONCLUSIVE"
         },
         {
-          "evidence": "No relevant content about HypeBot 9000 or A2A protocol found in source.",
+          "evidence": "No A2A endpoints, agent cards, or interop documentation present.",
           "id": "A2A_SUPPORT",
-          "reason": "Source is a generic placeholder page with no agent-specific technical evidence.",
+          "reason": "Evidence does not address A2A capability.",
           "status": "INCONCLUSIVE"
         },
         {
-          "evidence": "No relevant content about HypeBot 9000 or execution behavior found in source.",
+          "evidence": "No autonomous execution details or multi\u2011step execution examples found.",
           "id": "AUTONOMOUS_EXECUTION",
-          "reason": "Source is a generic placeholder page with no agent-specific technical evidence.",
+          "reason": "Evidence insufficient to verify autonomous execution.",
           "status": "INCONCLUSIVE"
         }
       ],
       "evidence_sources": [
         {
-          "note": "Placeholder page unrelated to the agent.",
-          "quality": "NONE",
+          "url": "https://example.com/",
+          "normalized_url": "https://example.com",
           "type": "AGENT_WEBSITE",
-          "url": "https://example.com/"
+          "quality": "NONE",
+          "note": "Placeholder site; contains no technical details about HypeBot 9000."
         }
       ],
-      "summary": "The only retrieved source is a generic example domain placeholder containing no information about HypeBot 9000, so no capability can be verified or ruled out.",
+      "summary": "The only retrieved source provides no technical information on any declared capability, leaving all three capabilities unverified and inconclusive.",
       "limitations": [
         "evidence retrieval was insufficient or contradictory; no safe conclusion was possible",
         "capability MCP_SUPPORT remained inconclusive",
@@ -481,10 +569,12 @@
         "capability AUTONOMOUS_EXECUTION remained inconclusive"
       ],
       "state": "SEALED",
-      "created_at": "1788703896",
-      "verified_at": "1788703939",
+      "created_at": "1789015667",
+      "verified_at": "1789015705",
       "verification_version": "1.0",
-      "submitter": "0x5E77b8D3655918454134a2d5BAd9dd76B741b4cB"
+      "taxonomy_version": "1.0",
+      "submitter": "0x5E77b8D3655918454134a2d5BAd9dd76B741b4cB",
+      "owner": "0x5E77b8D3655918454134a2d5BAd9dd76B741b4cB"
     }
   },
   "negative_safe": {
@@ -527,11 +617,168 @@
       }
     ]
   },
+  "s6_evidence_provenance": {
+    "verification_id": 5,
+    "request_tx": "0x3b2861dd48339cee371f4cac9da1800461624a1fd11fe1e449322c8d56a9dd1b",
+    "verify_tx": "0x1ec80b565f7cf6fceae0781d4cd0d17f82851c163210d99edbcb5b0bb30ce445",
+    "consensus_rounds": [
+      "MAJORITY_AGREE"
+    ],
+    "status": "INCONCLUSIVE",
+    "score": 50,
+    "state": "SEALED",
+    "verified": [],
+    "unsupported": [],
+    "inconclusive": [
+      "WEB_RESEARCH",
+      "DOCUMENTATION"
+    ],
+    "strong_sources": 1,
+    "verify_secs": 133.7,
+    "record": {
+      "verification_id": "5",
+      "agent_name": "BrokenDocs Agent",
+      "agent_url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+      "documentation_url": "https://api.github.com/agentproof-nonexistent-404",
+      "declared_capabilities": [
+        "WEB_RESEARCH",
+        "DOCUMENTATION"
+      ],
+      "capability_objects": [
+        {
+          "id": "WEB_RESEARCH",
+          "key": "WEB_RESEARCH",
+          "label": "Web Research",
+          "display_name": "Web Research",
+          "criteria": "Technical documentation, API reference or product docs explicitly describe web search/retrieval functionality with concrete usage (endpoints, tools, config) \u2014 not marketing language alone."
+        },
+        {
+          "id": "DOCUMENTATION",
+          "key": "DOCUMENTATION",
+          "label": "Public Documentation",
+          "display_name": "Public Documentation",
+          "criteria": "A working, reachable documentation URL with substantive technical content (guides, references, examples) \u2014 not an empty or placeholder page."
+        }
+      ],
+      "sources": [
+        {
+          "url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "normalized_url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "type": "AGENT_WEBSITE"
+        },
+        {
+          "url": "https://api.github.com/agentproof-nonexistent-404",
+          "normalized_url": "https://api.github.com/agentproof-nonexistent-404",
+          "type": "DOCUMENTATION"
+        }
+      ],
+      "source_provenance": [
+        {
+          "submitted_url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "normalized_url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "source_type": "AGENT_WEBSITE",
+          "fetch_success": true,
+          "http_status": 200,
+          "used_as_evidence": true
+        },
+        {
+          "submitted_url": "https://api.github.com/agentproof-nonexistent-404",
+          "normalized_url": "https://api.github.com/agentproof-nonexistent-404",
+          "source_type": "DOCUMENTATION",
+          "fetch_success": false,
+          "http_status": 404,
+          "used_as_evidence": false
+        }
+      ],
+      "status": "INCONCLUSIVE",
+      "score": 50,
+      "verified_capabilities": [],
+      "unsupported_capabilities": [],
+      "inconclusive_capabilities": [
+        "WEB_RESEARCH",
+        "DOCUMENTATION"
+      ],
+      "capability_details": [
+        {
+          "evidence": "Source 1 details Tavily Search API endpoints, not BrokenDocs Agent. Source 2 failed to fetch.",
+          "id": "WEB_RESEARCH",
+          "reason": "No retrieved evidence links web-search functionality to BrokenDocs Agent.",
+          "status": "INCONCLUSIVE"
+        },
+        {
+          "evidence": "Submitted docs URL returned 404/no content; the retrieved Tavily docs do not cover BrokenDocs Agent.",
+          "id": "DOCUMENTATION",
+          "reason": "Failure of the documentation source prevents verifying BrokenDocs Agent docs.",
+          "status": "INCONCLUSIVE"
+        }
+      ],
+      "evidence_sources": [
+        {
+          "url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "normalized_url": "https://docs.tavily.com/documentation/api-reference/endpoint/search.md",
+          "type": "AGENT_WEBSITE",
+          "quality": "STRONG",
+          "note": "Strong Tavily API docs, but unrelated to BrokenDocs Agent."
+        }
+      ],
+      "summary": "Retrieved evidence concerns Tavily, not BrokenDocs Agent, and the submitted documentation URL failed. Capabilities cannot be verified or disproven.",
+      "limitations": [
+        "evidence retrieval was insufficient or contradictory; no safe conclusion was possible",
+        "capability WEB_RESEARCH remained inconclusive",
+        "capability DOCUMENTATION remained inconclusive"
+      ],
+      "state": "SEALED",
+      "created_at": "1789015805",
+      "verified_at": "1789015846",
+      "verification_version": "1.0",
+      "taxonomy_version": "1.0",
+      "submitter": "0x5E77b8D3655918454134a2d5BAd9dd76B741b4cB",
+      "owner": "0x5E77b8D3655918454134a2d5BAd9dd76B741b4cB"
+    }
+  },
+  "s6_evidence_404_excluded": {
+    "ok": true,
+    "sealed": true,
+    "sealed_urls": [
+      "https://docs.tavily.com/documentation/api-reference/endpoint/search.md"
+    ],
+    "provenance_404": [
+      {
+        "submitted_url": "https://api.github.com/agentproof-nonexistent-404",
+        "normalized_url": "https://api.github.com/agentproof-nonexistent-404",
+        "source_type": "DOCUMENTATION",
+        "fetch_success": false,
+        "http_status": 404,
+        "used_as_evidence": false
+      }
+    ]
+  },
+  "s7_taxonomy_nonowner_rejected": {
+    "ok": true,
+    "detail": "reverted at consensus (not in taxonomy)"
+  },
   "result": {
     "determinism_consistent": true,
     "negative_safe_not_verified": true,
     "views_ok": true,
+    "evidence_404_excluded": true,
+    "taxonomy_nonowner_rejected": true,
     "all_ok": true,
-    "address": "0x87303D30DA71a47221A5fe5aD6aBC7350384B770"
+    "address": "0xd25Cc0910d67CBe06E228CAFD5382638DF9d9Ca4"
+  },
+  "deployment_history": {
+    "note": "v3 steward-remediation deployment. Previous contracts remain readable on-chain as history.",
+    "v1_initial_smoke_2026_09_06": {
+      "address": "0x87303D30DA71a47221A5fe5aD6aBC7350384B770",
+      "status": "historical \u2014 pre-remediation; 4 passports readable; lacks remediated methods"
+    },
+    "v2_remediation_attempt_1": {
+      "address": "0x4239311F2eC2d3964ff114819A6e4c716Ef8594c",
+      "status": "superseded \u2014 S6 revealed the 404-evidence record could not seal (leader/validator disagreement on fetch-failure statuses); fixed via prompt rule R10 + vacuous-assertion guard in the harness, redeployed as v3"
+    },
+    "v3_final": {
+      "address": "0xd25Cc0910d67CBe06E228CAFD5382638DF9d9Ca4",
+      "status": "CURRENT \u2014 S1-S7 all pass"
+    }
   }
 }

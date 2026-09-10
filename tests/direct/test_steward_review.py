@@ -397,6 +397,98 @@ class TestEvidenceProvenance:
         assert prov[AGENT_URL]["fetch_success"] is False
         assert prov[AGENT_URL]["used_as_evidence"] is False
 
+    def test_404_docs_seals_inconclusive_not_stuck(self, deployed,
+                                                   direct_vm,
+                                                   direct_alice):
+        """LIVE S6 regression (first smoke run failed here): a
+        DOCUMENTATION capability whose submitted docs URL 404s must
+        SEAL with DOCUMENTATION=INCONCLUSIVE — R10 makes fetch failure
+        authoritative, so 'unreachable docs' can never be ruled
+        UNVERIFIED (a dead URL proves nothing) and the record can
+        never get stuck PENDING on leader/validator disagreement."""
+        vm = direct_vm
+        contract = deployed
+        vid = int(request_as(vm, contract, direct_alice,
+                             "BrokenDocs Agent", AGENT_URL, DOCS_URL,
+                             json.dumps(["DOCUMENTATION"])))
+        mock_body(vm, ".*researchbot\\.example\\.com/?$",
+                  DOCS_BODY_STRONG)                     # agent page 200
+        mock_body(vm, ".*researchbot\\.example\\.com/docs",
+                  "<html>Not Found</html>", status=404)  # docs URL 404
+        # honest evaluation per R10: fetch failure -> INCONCLUSIVE
+        vm.mock_llm(".*", llm_caps(
+            [("DOCUMENTATION", "INCONCLUSIVE")],
+            sources=[H._src(AGENT_URL, "STRONG"),
+                     H._src(DOCS_URL, "NONE")]))
+        out = json.loads(contract.verify_agent(vid))
+        sealed = json.loads(contract.get_verification(vid))
+        # the record MUST seal (never stuck PENDING) — the live-S6 bug
+        assert sealed["state"] == "SEALED", sealed
+        # fetch failure is authoritative: DOCUMENTATION is INCONCLUSIVE
+        # (never UNVERIFIED — R10), never VERIFIED
+        assert sealed["inconclusive_capabilities"] == ["DOCUMENTATION"]
+        assert sealed["unsupported_capabilities"] == []
+        assert sealed["verified_capabilities"] == []
+        assert out["status"] in ("INCONCLUSIVE", "UNVERIFIED", "PARTIAL")
+        # the 404 URL is provenance-recorded and not sealed evidence
+        prov = {p["normalized_url"]: p
+                for p in sealed["source_provenance"]}
+        assert prov[DOCS_URL]["http_status"] == 404
+        assert prov[DOCS_URL]["fetch_success"] is False
+        assert prov[DOCS_URL]["used_as_evidence"] is False
+        sealed_urls = [s["normalized_url"]
+                       for s in sealed["evidence_sources"]]
+        assert DOCS_URL not in sealed_urls
+
+    def test_validator_rejects_unverified_from_fetch_failure(self, deployed,
+                                                             direct_vm,
+                                                             direct_alice):
+        """LIVE S6 regression, validator side: a leader that rules a
+        capability UNVERIFIED because its URL failed to fetch (the
+        pre-R10 behavior seen on Studionet) must be REJECTED — the
+        validator's own honest evaluation says INCONCLUSIVE (R4+R10)
+        and the capability statuses disagree."""
+        vm = direct_vm
+        contract = deployed
+        vid = int(request_as(vm, contract, direct_alice,
+                             "BrokenDocs Agent", AGENT_URL, DOCS_URL,
+                             json.dumps(["DOCUMENTATION"])))
+        mock_body(vm, ".*researchbot\\.example\\.com/?$",
+                  DOCS_BODY_STRONG)
+        mock_body(vm, ".*researchbot\\.example\\.com/docs",
+                  "<html>Not Found</html>", status=404)
+        # honest LLM (what validators independently produce): 404 ->
+        # INCONCLUSIVE
+        vm.mock_llm(".*", llm_caps(
+            [("DOCUMENTATION", "INCONCLUSIVE")],
+            sources=[H._src(AGENT_URL, "STRONG"),
+                     H._src(DOCS_URL, "NONE")]))
+        contract.verify_agent(int(vid))   # capture leader+validator
+        # the pre-R10 leader lie: 'docs unreachable -> UNVERIFIED'
+        unverified_from_fetch_failure = {
+            "capabilities": [
+                {"id": "DOCUMENTATION", "status": "UNVERIFIED",
+                 "evidence": "docs URL failed to resolve",
+                 "reason": "unreachable documentation URL"},
+            ],
+            "sources": [
+                {"url": AGENT_URL, "type": "AGENT_WEBSITE",
+                 "quality": "STRONG", "note": "ok"},
+                {"url": DOCS_URL, "type": "DOCUMENTATION",
+                 "quality": "NONE", "note": "404"},
+            ],
+            "http_statuses": [200, 404],
+            "overall_inconclusive": False,
+            "retrieval_failed": False,
+            "conflict": False,
+            "summary": "docs unreachable so DOCUMENTATION is unsupported",
+        }
+        accepted = vm.run_validator(
+            leader_result=unverified_from_fetch_failure)
+        assert accepted is False, (
+            "validator must reject UNVERIFIED derived from a fetch "
+            "failure (R4/R10: a dead URL proves nothing)")
+
     def test_500_url_never_sealed_as_evidence(self, deployed, direct_vm,
                                               direct_alice):
         vm = direct_vm
